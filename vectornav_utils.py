@@ -33,44 +33,107 @@
 #! /usr/bin/env python
 import numpy as np
 import struct
-import binascii
+
+def extract_type_int(data,struct_type):
+    # here struct_type mentions data_type formatter required
+    # example s8 struct_type = b
+    # u8/uint8 struct_type = B refer this link
+    # https://docs.python.org/2/library/struct.html    
+    data_int = [data[-i] for i in range(1,len(data)+1)]
+    data_string = ''.join(x_ for x_ in data_int)
+    return struct.unpack('!'+struct_type,data_string)[0]
+
+def extract_type_float(data):
+    data_float = [data[-i] for i in range(1,len(data)+1)]
+    data_string = ''.join(x_ for x_ in data_float)
+    return struct.unpack('!f',data_string)[0]
+
+def extract_type_double(data):
+    data_double = [data[-i] for i in range(1,len(data)+1)]
+    data_string = ''.join(x_ for x_ in data_double)
+    return struct.unpack('!d',data_string)[0]
+
+def extract_vectorN_float(data):
+    data_out = []
+    for i in range(len(data)):
+        data_out.append(extract_type_float(data[4*i:4*i+4]))
+    return data_out
+
+def extract_vectorN_double(data):
+    data_out = []
+    for i in range(len(data)):
+        data_out.append(extract_type_double(data[8*i:8*i+8]))
+    return data_out
 
 def extract_UTC(data):
-    return data
+    # year offset from 2000, 2013 is formatted as 13
+    year = struct.unpack('!b',data[0])[0]
+    month = struct.unpack('!B',data[1])[0]
+    day = struct.unpack('!B',data[2])[0]
+    hour = struct.unpack('!B',data[3])[0]
+    minute = struct.unpack('!B',data[4])[0]
+    sec = struct.unpack('!B',data[5])[0]
+    millisec = struct.unpack('!H','{0}{1}'.format(data[7],data[6]))[0]
+
+    #epoch_utc = ((30+year)*31,556,952)+(month*2592000)+(day*86400)+(hour*3600)+(minute*60)+sec+(millisec/1000.0)
+    # write utc_struct and return it if you need
+    return [year,month,day,hour,minute,sec,millisec]
+
 def extract_Tow(data):
-    return data
+    ## in nano seconds  
+    data_tow = [data[-i] for i in range(1,len(data)+1)]
+    tow_string = ''.join(x_ for x_ in data_tow)
+    #print struct.unpack('!Q',tow_string)[0]
+    return struct.unpack('!Q',tow_string)[0]
+
 def extract_Week(data):
-    return data
+    return struct.unpack('!H','{0}{1}'.format(data[1],data[0]))[0]
+
 def extract_NumSats(data):
-    return data
+    return struct.unpack('!B',data[0])[0]
+
 def extract_Fix(data):
-    return data
+    return struct.unpack('!B',data[0])[0]
+
 def extract_PosLla(data):
-    return data
+    return extract_vec3_double(data)
+
 def extract_PosEcef(data):
-    return data
+    return extract_vec3_double(data)
+
 def extract_VelNed(data):
-    return data
+    return extract_vectorN_float(data)
+
 def extract_VelEcef(data):
-    return data
+    return extract_vectorN_float(data)
+
 def extract_PosU(data):
-    return data
+    return extract_vectorN_float(data)
+
 def extract_VelU(data):
-    return data
+    return extract_type_float(data)
+
 def extract_TimeU(data):
-    return data
+    return extract_type_float(data)
+
 def extract_TimeInfo(data):
-    return data
+    status = struct.unpack('!B',data[0])[0]
+    status_mask = format(bin(status)[2:],'0>8')
+    leap_seconds = struct.unpack('!b',data[1])[0]
+    return [status,status_mask,leap_seconds]
+
 def extract_DOP(data):
-    return data
+    return extract_vectorN_float(data)
+
 def extract_SatInfo(data):
     # length = 1+ 8*(num_of_sats)
     if len(data) == 1:
         #if there are no visible sats, return
-        return
-
+        print 'no sats'
+        return ''
         # neglect the first reserved one byte
     data = data[1:]
+
     sys_array   = [] # GNSS constellation indicator 
     svld_array  = [] # Space vehicle Id
     flags_array = [] # Tracking info flags #8bit flags
@@ -81,34 +144,34 @@ def extract_SatInfo(data):
     az_array    = [] # Azimuth angle in degrees
 
     for i in range(len(data)/8):
-        # sys is uint8 as mentioned in raw_measurement.(not s8 as in satinfo doc of user manual)
-        sys = int(data[8*i + 0],16)
+        # sys is s8
+        sys = struct.unpack('!b',data[8*i + 0])[0]
         sys_array.append(sys)
 
         # svld is uint8
-        svld = int(data[8*i + 1],16)
+        svld = struct.unpack('!B',data[8*i + 1])[0]
         svld_array.append(svld)
 
         # flags is uint8 but it is bitmask actually
-        flags = int(data[8*i + 2],16)
+        flags = struct.unpack('!B',data[8*i + 2])[0]
         flags_mask = format(bin(flags)[2:],'0>8')
         flags_array.append(flags)
         flags_mask_array.append(flags_mask)
         
         # cno is uint8
-        cno = int(data[8*i + 3],16)
+        cno = struct.unpack('!B',data[8*i + 3])[0]
         cno_array.append(cno)
 
         # qi is uint8
-        qi = int(data[8*i + 4],16)
+        qi = struct.unpack('!B',data[8*i + 4])[0]
         qi_array.append(qi)
 
-        # el is s8 # is it float8 or unit8?
-        el = int(data[8*i + 5],16)
+        # el is s8
+        el = struct.unpack('!b',data[8*i + 5])[0]
         el_array.append(el)
 
-        # az is s16 # could be a float16 or uint16?
-        az = int('{0}{1}'.format(data[8*i + 7],data[8*i + 6]),16)
+        # az is s16
+        az =struct.unpack('!h','{0}{1}'.format(data[8*i + 7],data[8*i + 6]))[0]
         az_array.append(az)
     # print 'num_of_sats ', len(data)/8
     # print sys_array
@@ -126,7 +189,8 @@ def extract_RawMeas(data):
     # length = 1+ 28*(num_of_sats)
     if len(data) == 1:
         #if there are no visible sats, return
-        return
+        print 'no sats'
+        return ''
     # neglect the first reserved one byte
     data = data[1:]
 
@@ -144,54 +208,45 @@ def extract_RawMeas(data):
 
     for i in range(len(data)/28):
         # sys is uint8 as mentioned in raw_measurement.(not s8 as in satinfo doc of user manual)
-        sys = int(data[28*i + 0],16)
+        sys = struct.unpack('!B',data[28*i + 0])[0]
         sys_array.append(sys)
 
         # svld is uint8
-        svld = int(data[28*i + 1],16)
+        svld = struct.unpack('!B',data[28*i + 1])[0]
         svld_array.append(svld)
+
         #freq is uint8
-        freq = int(data[28*i + 2],16)
+        freq = struct.unpack('!B',data[28*i + 2])[0]
         freq_array.append(freq)
 
         #chan is uint8
-        chan = int(data[28*i + 3],16)
+        chan = struct.unpack('!B',data[28*i + 3])[0]
         chan_array.append(chan)
 
         #slot is s8
-        slot = data[28*i + 4].decode("hex")
-        print slot
-        #slot_array.append(slot)
+        slot = struct.unpack('!b',data[28*i + 4])[0]
+        slot_array.append(slot)
 
         # cno is uint8
-        cno = int(data[28*i + 5],16)
+        cno = struct.unpack('!B',data[28*i + 5])[0]
         cno_array.append(cno)
 
         # flags is uint16, but it is bitmask actually
-        flags = int('{0}{1}'.format(data[28*i + 7],data[28*i + 6]),16)
+        flags = struct.unpack('!H','{0}{1}'.format(data[28*i + 7],data[28*i + 6]))[0]
         flags_mask = format(bin(flags)[2:],'0>16')
         flags_array.append(flags)
         flags_mask_array.append(flags_mask)
 
         #pr is double 64 bit/8 bytes
-        data_pr = data[28*i+8:28+i +15]
-        data_pr = [data_pr[-i] for i in range(1,len(data_pr)+1)]
-        hex_string_pr = ''.join(x_ for x_ in data_pr)
-        pr = struct.unpack('!d',hex_string_pr.decode("hex"))
+        pr = extract_type_double(data[28*i+8:28*i +16])
         pr_array.append(pr)
 
         #cp is double 64 bit/8 bytes
-        data_cp = data[28*i+16:28+i +23]
-        data_cp = [data_pr[-i] for i in range(1,len(data_cp)+1)]
-        hex_string_cp = ''.join(x_ for x_ in data_cp)
-        cp = struct.unpack('!d',hex_string_cp.decode("hex"))
+        cp = extract_type_double(data[28*i+16:28*i +24])
         cp_array.append(cp)
 
-        #dp is double 32 bit/4 bytes
-        data_dp = data[28*i+24:28+i +27]
-        data_dp = [data_dp[-i] for i in range(1,len(data_dp)+1)]
-        hex_string_dp = ''.join(x_ for x_ in data_dp)
-        dp = struct.unpack('!f',hex_string_dp.decode("hex"))
+        #dp is float 32 bit/4 bytes
+        dp = extract_type_float(data[28*i+24:28*i +28])
         dp_array.append(dp)
 
     # print 'num_of_sats ', len(data)/28
@@ -206,6 +261,7 @@ def extract_RawMeas(data):
     # print pr_array
     # print cp_array
     # print dp_array
+    #print 'data'
     return sys_array, svld_array, freq_array, chan_array, slot_array, cno_array, flags_array, flags_mask_array, pr_array, cp_array, dp_array
 
 gnss_group_dict = {    
@@ -226,3 +282,21 @@ gnss_group_dict = {
 14: extract_SatInfo,
 15: extract_RawMeas
 }
+
+def extract_quaternion(data):
+    return extract_vectorN_float(data)
+
+def extract_Accel(data):
+    return extract_vectorN_float(data)
+
+def extract_AngularRate(data):
+    return extract_vectorN_float(data)
+
+def extract_Imu(data):
+    return extract_vectorN_float(data)
+
+def extract_Temp(data):
+    return extract_vectorN_float(data)
+
+def extract_Pres(data):
+    return extract_vectorN_float(data)
