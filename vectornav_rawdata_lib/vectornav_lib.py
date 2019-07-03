@@ -40,9 +40,6 @@ import struct
 from vectornav_utils import *
 import time
 
-#import rospy
-#import binascii
-
 
 _sync_byte = 0xFA
 _binarygroup_datasize = np.array(np.mat(\
@@ -63,13 +60,20 @@ _binarygroup_datasize = np.array(np.mat(\
     8 0 0 0 0 0 0 0; \
     0 0 0 0 0 0 0 0')).transpose()
 
+def sample_cb(data):
+    #process / feed data into some other place
+    print 'data',data[0]
+    return True
+
 class VnBinaryParser:
-    """docstring for VnBinaryParser"""
-    def __init__(self, port, baudrate, timeout):
+    """doc for VnBinaryParser"""
+    def __init__(self, port, baudrate, timeout=0,callback_fn=sample_cb,callback_var_dict=''):
         try:
             self.serial_handler = serial.Serial(port, baudrate,timeout=timeout)
             print 'serial port connected'
             time.sleep(3)
+            self.callback_fn = callback_fn
+            self.callback_var_dict = callback_var_dict
         except Exception as init_ex:
             print(traceback.format_exc(init_ex))
             sys.exit()
@@ -94,6 +98,16 @@ class VnBinaryParser:
         data_binary =''.join(x_ for x_ in binary_list)
         return data_binary
 
+    def parse_dict_set_bor(self):
+        """
+        For Future purpose, implement setting/writing register for BOR 
+        based on user requirments in self.callback_var_dict and read specific BOR to confirm again
+        1. parse self.callback_var_dict to map Binary groups and fields
+        2. set/write BOR register and serial port
+        3. Read/verify BOR  
+        """
+        pass
+
     def run_driver(self):
         run_loop = True
         while(run_loop):
@@ -111,13 +125,20 @@ class VnBinaryParser:
                             print 'skip at header'
                             continue
                         
-                        # parse payload as required
-                        status = self.payload_parser(binary_groups_array, active_fields_array)
-                        if status is False:
-                            # if payload_parser fails
-                            print 'skip at payload'
-                            continue
-
+                        if fixed_length is True:
+                            # parse payload as required
+                            status = self.fixed_payload_parser(binary_groups_array, active_fields_array)
+                            if status is False:
+                                # if payload_parser fails
+                                print 'skip at payload'
+                                continue
+                        else:
+                            # parse payload as required
+                            status = self.variable_payload_parser(binary_groups_array, active_fields_array)
+                            if status is False:
+                                # if payload_parser fails
+                                print 'skip at payload'
+                                continue
                         # wait for 16 bit checksum
                         crc_raw = self.get_serial_shifted_data(2)
                         crc = struct.unpack('!H',crc_raw)[0]
@@ -184,7 +205,9 @@ class VnBinaryParser:
         status = True
         return status, binary_groups, active_fields, fixed_length  
 
-    def payload_parser(self,binary_groups_array,active_fields_array):
+    def variable_payload_parser(self,binary_groups_array,active_fields_array):
+        # create new data_frame upon sync_byte and delete at end of callback
+        data_frame = []
         active_idx = np.where(binary_groups_array)[0]
         for idx, i in enumerate(active_idx):
             if i == 3:
@@ -199,8 +222,25 @@ class VnBinaryParser:
             # if parsing of even one group is messed up, ill negelct all data in the current payload
             # so i'll skip this data completely until next sync_byte
             if status is False:
+                del data_frame
                 return False
-        return True       
+        # load data into data_frame based on self.callback_var_dict
+        data_frame.append(1)
+        # send data to callback here at end of parsing of all groups
+        a = self.callback_fn(data_frame)
+        # release data_frame at end of cb
+        del data_frame
+        return True 
+
+    def fixed_payload_parser(self,binary_groups_array,active_fields_array):
+        """
+        For future purpose
+        if only fixed data types are present in header,
+        buffer to required length and parse at one go
+        we know the size from _binarygroup_datasize,
+        if we have _binarygroup_struct_datatype then we can create a string from activefiled_types and total buffer length and struct.unpack at one go and map them later for faster processing. 
+        """
+        pass     
 
     def parser_binary_group_4(self,active_fields_group4):
         # gnss 1 receiver
@@ -268,10 +308,10 @@ class VnBinaryParser:
             #publish the data
         return True
 
-
 if __name__ == '__main__':
     port = sys.argv[1]
     baudrate = sys.argv[2]
-    #timeout = float(1/200.0)
-    vnparser_obj = VnBinaryParser(port, baudrate, timeout=0)
+    #VnBinaryParser(self, port, baudrate, timeout=0,callback_fn,callback_var_dict='')
+    callback_var_dict = ''
+    vnparser_obj = VnBinaryParser(port, baudrate)
     vnparser_obj.run_driver()

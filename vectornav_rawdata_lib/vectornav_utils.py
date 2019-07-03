@@ -33,7 +33,18 @@
 #! /usr/bin/env python
 import numpy as np
 import struct
+"""
+test inliner in future
+#https://github.com/orf/inliner
 
+example:
+
+from inliner import inline
+
+@inline
+def func_to_be_inlined():
+    pass
+"""
 def extract_type_int(data,struct_type):
     # here struct_type mentions data_type formatter required
     # example s8 struct_type = b
@@ -52,6 +63,7 @@ def extract_type_double(data):
     data_double = [data[-i] for i in range(1,len(data)+1)]
     data_string = ''.join(x_ for x_ in data_double)
     return struct.unpack('!d',data_string)[0]
+
 
 def extract_vectorN_float(data):
     data_out = []
